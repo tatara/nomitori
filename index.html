@@ -73,7 +73,6 @@
     </div>
     <div class="message" id="msg-result" hidden>
       <p class="big">ぷち</p>
-      <p id="result-text"></p>
       <p class="share-text" id="share-text"></p>
       <div class="share" id="share">
         <a id="btn-post" href="https://x.com/intent/tweet" target="_blank" rel="noopener noreferrer"><kbd>X</kbd>𝕏 に投稿する</a>
@@ -228,10 +227,7 @@
 
   function finish() {
     state = "result";
-    var isBest = best[level] === undefined || elapsed < best[level];
-    if (isBest) best[level] = elapsed;
-    el("result-text").textContent =
-      LEVELS[level].name + "  " + formatTime(elapsed) + "  空振り " + misses + " 回" + (isBest ? "  最短記録" : "");
+    if (best[level] === undefined || elapsed < best[level]) best[level] = elapsed;
     shareText = buildShareText();
     el("share-text").textContent = shareText;
     el("btn-post").href = buildPostUrl(shareText);
