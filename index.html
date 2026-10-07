@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ノミ取り</title>
+<title>ノミ取りドン</title>
 <!--
-  ノミ取り — ブラウザ版
+  ノミ取りドン — ブラウザ版
   PC-9801 用ゲーム「nomi ver.1.0」(y.nabe 氏) をもとにした独自実装。
   元のコード・文面は使っていない。ファイルはこの 1 枚だけで、外部の読み込みもない。
 -->
@@ -62,12 +62,12 @@
 </head>
 <body>
 <main>
-  <h1>A&gt;ノミ取り<span class="cursor" aria-hidden="true"></span></h1>
+  <h1>A&gt;ノミ取りドン<span class="cursor" aria-hidden="true"></span></h1>
 
   <div class="screen" id="screen">
     <canvas id="canvas" width="640" height="400" aria-label="ゲーム画面"></canvas>
     <div class="message" id="msg-title">
-      <p class="big">ノミ取り</p>
+      <p class="big">ノミ取りドン</p>
       <p>歩き回るノミにカーソルを重ねてクリックすると捕まえられます。</p>
       <p class="hint">画面をクリックして始める</p>
     </div>
@@ -328,7 +328,7 @@
     var target = dimeSkin ? "ディメトロドン" : "ノミ";
     var missText = misses === 0 ? "空振りせずに" : misses + "回空振りして";
     return "わたしは　" + LEVELS[level].name + "　" + target + "を　" + missText + " " +
-           formatTimeMs(elapsed) + " かけて　潰しました。ぷち。";
+           formatTimeMs(elapsed) + " かけて　潰しました。ぷち。 #ノミ取りドン";
   }
 
   function buildPostUrl(text) {
