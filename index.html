@@ -135,7 +135,7 @@
   var COLORS = ["#ffffff", "#ffff00", "#00ffff", "#00ff00", "#ff00ff", "#ff0000", "#0000ff"];
 
   var POST_URL = "https://x.com/intent/tweet";   // 𝕏 の投稿フォーム (Web Intent)
-  var SHARE_APPEND_URL = false;      // true にすると、投稿文の末尾にこのページの URL を付ける
+  var SHARE_APPEND_URL = true;      // true にすると、投稿文の末尾にこのページの URL を付ける
   var COPY_NOTICE_MS = 2000;         // 「コピーしました」を出しておく時間
 
   // ディメトロドン (右向き)。S = 帆, B = 体, E = 目
@@ -326,8 +326,8 @@
 
   function buildShareText() {
     var target = dimeSkin ? "ディメトロドン" : "ノミ";
-    return "わたしは　" + LEVELS[level].name + "　" + target + "を　" + misses + " 回空振りして " +
-           formatTimeMs(elapsed) + " で　潰しました。ぷち。";
+    return "わたしは　" + LEVELS[level].name + "　" + target + "を　" + misses + "回空振りして " +
+           formatTimeMs(elapsed) + " かけて　潰しました。ぷち。";
   }
 
   function buildPostUrl(text) {
