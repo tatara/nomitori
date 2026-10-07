@@ -326,7 +326,8 @@
 
   function buildShareText() {
     var target = dimeSkin ? "ディメトロドン" : "ノミ";
-    return "わたしは　" + LEVELS[level].name + "　" + target + "を　" + misses + "回空振りして " +
+    var missText = misses === 0 ? "空振りせずに" : misses + "回空振りして";
+    return "わたしは　" + LEVELS[level].name + "　" + target + "を　" + missText + " " +
            formatTimeMs(elapsed) + " かけて　潰しました。ぷち。";
   }
 
