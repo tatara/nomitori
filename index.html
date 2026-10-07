@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ノミ取り</title>
+<!--
+  ノミ取り — ブラウザ版
+  PC-9801 用ゲーム「nomi ver.1.0」(y.nabe 氏) の遊びをもとにした独自実装。
+  元のコード・文面は使っていない。ファイルはこの 1 枚だけで、外部の読み込みもない。
+-->
+<style>
+  /* PC-98 のテキスト画面をそのままページにする: 真っ黒の地、デジタル 8 色、等幅ゴシック */
+  :root {
+    --black: #000000;
+    --white: #ffffff;
+    --cyan: #00ffff;
+    --yellow: #ffff00;
+    --green: #00ff00;
+    --dim: #8a8a8a;
+    --font: "MS Gothic", "ＭＳ ゴシック", "Osaka-Mono", "Noto Sans Mono CJK JP", "BIZ UDGothic", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--black); color: var(--white); }
+  body { font-family: var(--font); font-size: 16px; line-height: 1.5; }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+
+  h1 { margin: 0 0 8px; font-size: 16px; font-weight: normal; }
+  h1 .cursor { display: inline-block; width: 0.5em; height: 1em; background: var(--white); vertical-align: -0.15em; }
+
+  /* ゲーム画面: 論理解像度 640x400 を、ぼかさずに拡大する */
+  .screen { position: relative; border: 1px solid var(--dim); cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .screen canvas { display: block; width: 100%; height: auto; aspect-ratio: 640 / 400; image-rendering: pixelated; }
+
+  .message { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; pointer-events: none; }
+  .message[hidden] { display: none; }
+  .message .big { font-size: clamp(32px, 8vw, 72px); line-height: 1.2; color: var(--yellow); }
+  .message p { margin: 0; }
+  .message .hint { color: var(--cyan); }
+
+  .status { display: flex; flex-wrap: wrap; gap: 0 2em; margin: 8px 0; color: var(--cyan); font-variant-numeric: tabular-nums; }
+  .status b { font-weight: normal; color: var(--white); }
+
+  /* 画面最下行のファンクションキー表示を操作ボタンにする */
+  .keys { display: flex; flex-wrap: wrap; gap: 8px 4px; }
+  .keys .gap { width: 12px; }
+  .keys button, .share a, .share button { font: inherit; min-height: 40px; padding: 4px 10px; border: 0; border-radius: 0; background: var(--white); color: var(--black); cursor: pointer; }
+  .keys button kbd, .share kbd { font: inherit; margin-right: 0.5em; opacity: 0.6; }
+  .keys button[aria-pressed="true"] { background: var(--yellow); }
+  .keys button:hover, .share a:hover, .share button:hover { background: var(--cyan); }
+  .keys button:focus-visible, .share a:focus-visible, .share button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+  /* 結果画面の「投稿」「コピー」。画面クリック (= 次のノミへ) と区別するため、ここだけクリックを受ける */
+  .share { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 4px; margin: 8px 0; pointer-events: auto; cursor: default; }
+  .share a { display: inline-flex; align-items: center; text-decoration: none; }
+  .message .share-text { max-width: 44em; }
+  .keys .swatch { display: inline-block; width: 0.8em; height: 0.8em; margin-left: 0.4em; border: 1px solid var(--black); vertical-align: -0.05em; }
+
+  .howto { margin: 16px 0 0; max-width: 40em; color: var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>A&gt;ノミ取り<span class="cursor" aria-hidden="true"></span></h1>
+
+  <div class="screen" id="screen">
+    <canvas id="canvas" width="640" height="400" aria-label="ゲーム画面"></canvas>
+    <div class="message" id="msg-title">
+      <p class="big">ノミ取り</p>
+      <p>歩き回るノミにカーソルを重ねてクリックすると捕まえられます。</p>
+      <p class="hint">画面をクリックして始める</p>
+    </div>
+    <div class="message" id="msg-result" hidden>
+      <p class="big">ぷち</p>
+      <p id="result-text"></p>
+      <p class="share-text" id="share-text"></p>
+      <div class="share" id="share">
+        <a id="btn-post" href="https://x.com/intent/tweet" target="_blank" rel="noopener noreferrer"><kbd>X</kbd>𝕏 に投稿する</a>
+        <button type="button" id="btn-copy"><kbd>C</kbd><span id="copy-label">コピーする</span></button>
+      </div>
+      <p class="hint">画面をクリックして次のノミへ</p>
+    </div>
+  </div>
+
+  <div class="status" aria-live="off">
+    <span>時間 <b id="hud-time">00:00.0</b></span>
+    <span>空振り <b id="hud-miss">0</b></span>
+    <span>最短 <b id="hud-best">--:--.-</b></span>
+  </div>
+
+  <div class="keys" role="group" aria-label="設定">
+    <button type="button" data-level="0" aria-pressed="false"><kbd>1</kbd>やさしい</button>
+    <button type="button" data-level="1" aria-pressed="true"><kbd>2</kbd>ふつう</button>
+    <button type="button" data-level="2" aria-pressed="false"><kbd>3</kbd>すばやい</button>
+    <button type="button" data-level="3" aria-pressed="false"><kbd>4</kbd>ナイトメア</button>
+    <span class="gap"></span>
+    <button type="button" id="btn-skin" aria-pressed="false"><kbd>5</kbd>ディメトロドン</button>
+    <button type="button" id="btn-color"><kbd>6</kbd>色<span class="swatch" id="swatch"></span></button>
+    <span class="gap"></span>
+    <button type="button" id="btn-quit"><kbd>ESC</kbd>やめる</button>
+  </div>
+
+  <p class="howto">ノミはカーソルが近づくとふらつき、正面から迫ると向きを変えて逃げます。画面の端から出ると反対側に現れます。「ナイトメア」は 1 ドットのノミを 1 ドットの狂いもなく押さえる必要があります。</p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---- 調整用の定数 ------------------------------------------------ */
+
+  var W = 640, H = 400;              // 論理解像度 (PC-98 の 640x400 に合わせる)
+
+  // stepMs: 1 歩 (1 ドット) 進む間隔。hitRadius: クリックが当たりになる距離。0 は「同じドット」のみ。
+  var LEVELS = [
+    { name: "やさしい", stepMs: 45, hitRadius: 12, dot: 3 },
+    { name: "ふつう",   stepMs: 30, hitRadius: 7,  dot: 2 },
+    { name: "すばやい", stepMs: 15, hitRadius: 5,  dot: 2 },
+    { name: "ナイトメア", stepMs: 30, hitRadius: 0,  dot: 1 }
+  ];
+
+  var NEAR_RANGE = 40;               // カーソルがこの範囲に入るとふらつく
+  var NEAR_WOBBLE = 4;               //   そのときの 1 歩あたりの最大旋回角 (度)
+  var DODGE_RANGE = 220;             // この距離以内でカーソルへ向かっていたら逃げる
+  var DODGE_CONE = 10;               //   「向かっている」とみなす角度の幅 (度)
+  var DODGE_TURN = 100;              //   逃げるときの旋回角 (度)
+  var IDLE_WOBBLE = 1;               // ふだんの気まぐれな旋回角 (度)
+
+  var SQUASH_FRAMES = 16;            // 捕まえたときの演出のコマ数
+  var SQUASH_MS = 100;
+  var MISS_MARK_MS = 400;            // 空振りの印を出しておく時間
+  var DIME_MIN_RADIUS = 6;           // ディメトロドン表示のときの当たり判定の下限
+
+  var COLORS = ["#ffffff", "#ffff00", "#00ffff", "#00ff00", "#ff00ff", "#ff0000", "#0000ff"];
+
+  var POST_URL = "https://x.com/intent/tweet";   // 𝕏 の投稿フォーム (Web Intent)
+  var SHARE_APPEND_URL = false;      // true にすると、投稿文の末尾にこのページの URL を付ける
+  var COPY_NOTICE_MS = 2000;         // 「コピーしました」を出しておく時間
+
+  // ディメトロドン (右向き)。S = 帆, B = 体, E = 目
+  var DIME = [
+    "......SSSS......",
+    "....SSSSSSSS....",
+    "...SSSSSSSSSS...",
+    "...SSSSSSSSSS.BB",
+    "..BBBBBBBBBBBBEB",
+    "BBBBBBBBBBBBBBB.",
+    "....B.B...B.B..."
+  ];
+
+  /* ---- 状態 -------------------------------------------------------- */
+
+  var el = function (id) { return document.getElementById(id); };
+  var screenEl = el("screen"), canvas = el("canvas"), ctx = canvas.getContext("2d");
+
+  var state = "title";               // title → play → squash → result
+  var level = 1, colorIndex = 0, dimeSkin = false;
+  var flea = { x: W / 2, y: H / 2, angle: 0 };
+  var pointer = { x: 0, y: 0, inside: false };
+  var elapsed = 0, misses = 0, stepAcc = 0, squashFrame = 0, squashAcc = 0;
+  var best = {};                     // 難易度ごとの最短時間 (ページを開いている間だけ覚える)
+  var missMark = null;               // { x, y, r, age }
+  var shareText = "";                // 直前の結果を伝える文
+  var copyTimer = 0;
+  var lastTime = 0;
+
+  function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+  function wrap(v, limit) { return ((v % limit) + limit) % limit; }
+
+  function hitRadius() {
+    var r = LEVELS[level].hitRadius;
+    return dimeSkin ? Math.max(r, DIME_MIN_RADIUS) : r;
+  }
+
+  /* ---- ノミの動き -------------------------------------------------- */
+
+  // カーソルの位置を見て、次の 1 歩でどれだけ向きを変えるか決める
+  function chooseTurn() {
+    if (!pointer.inside) return randInt(-IDLE_WOBBLE, IDLE_WOBBLE);
+
+    var dx = pointer.x - flea.x, dy = pointer.y - flea.y;
+    if (Math.abs(dx) < NEAR_RANGE && Math.abs(dy) < NEAR_RANGE) {
+      return randInt(-NEAR_WOBBLE, NEAR_WOBBLE);
+    }
+
+    var toCursor = Math.atan2(dy, dx) * 180 / Math.PI;
+    var off = Math.abs(wrap(toCursor - flea.angle + 180, 360) - 180);
+    if (off < DODGE_CONE && Math.sqrt(dx * dx + dy * dy) < DODGE_RANGE) {
+      return Math.random() < 0.5 ? DODGE_TURN : -DODGE_TURN;
+    }
+    return randInt(-IDLE_WOBBLE, IDLE_WOBBLE);
+  }
+
+  function stepFlea(turn) {
+    flea.angle = wrap(flea.angle + turn, 360);
+    var rad = flea.angle * Math.PI / 180;
+    flea.x = wrap(flea.x + Math.cos(rad), W);
+    flea.y = wrap(flea.y + Math.sin(rad), H);
+  }
+
+  /* ---- 進行 -------------------------------------------------------- */
+
+  function show(id, visible) { el(id).hidden = !visible; }
+
+  function toTitle() {
+    state = "title";
+    show("msg-title", true);
+    show("msg-result", false);
+    updateHud();
+  }
+
+  function start() {
+    state = "play";
+    flea.x = W / 2;
+    flea.y = H / 2;
+    flea.angle = randInt(0, 359);
+    elapsed = 0; misses = 0; stepAcc = 0; missMark = null;
+    show("msg-title", false);
+    show("msg-result", false);
+    updateHud();
+  }
+
+  function caught() {
+    state = "squash";
+    squashFrame = 0; squashAcc = 0; missMark = null;
+  }
+
+  function finish() {
+    state = "result";
+    var isBest = best[level] === undefined || elapsed < best[level];
+    if (isBest) best[level] = elapsed;
+    el("result-text").textContent =
+      LEVELS[level].name + "  " + formatTime(elapsed) + "  空振り " + misses + " 回" + (isBest ? "  最短記録" : "");
+    shareText = buildShareText();
+    el("share-text").textContent = shareText;
+    el("btn-post").href = buildPostUrl(shareText);
+    resetCopyLabel();
+    show("msg-result", true);
+    updateHud();
+  }
+
+  function update(dt) {
+    if (state === "play") {
+      elapsed += dt;
+      stepAcc += dt;
+      var stepMs = LEVELS[level].stepMs;
+      while (stepAcc >= stepMs) {
+        stepFlea(chooseTurn());
+        stepAcc -= stepMs;
+      }
+      if (missMark && (missMark.age += dt) > MISS_MARK_MS) missMark = null;
+    } else if (state === "squash") {
+      squashAcc += dt;
+      while (squashAcc >= SQUASH_MS && state === "squash") {
+        squashAcc -= SQUASH_MS;
+        stepFlea(180);                         // その場で前後に震える
+        if (++squashFrame >= SQUASH_FRAMES) finish();
+      }
+    }
+  }
+
+  /* ---- 描画 -------------------------------------------------------- */
+
+  function drawDime(cx, cy, color, facingLeft) {
+    var w = DIME[0].length, h = DIME.length;
+    var left = Math.floor(cx) - (w >> 1), top = Math.floor(cy) - (h >> 1);
+    for (var r = 0; r < h; r++) {
+      for (var c = 0; c < w; c++) {
+        var ch = DIME[r].charAt(facingLeft ? w - 1 - c : c);
+        if (ch === ".") continue;
+        ctx.fillStyle = ch === "E" ? "#000000" : color;
+        ctx.globalAlpha = ch === "S" ? 0.6 : 1;
+        ctx.fillRect(left + c, top + r, 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function draw() {
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, W, H);
+    if (state === "title" || state === "result") return;
+
+    var color = COLORS[colorIndex];
+    if (state === "squash") color = COLORS[squashFrame % COLORS.length];
+
+    if (dimeSkin) {
+      drawDime(flea.x, flea.y, color, Math.cos(flea.angle * Math.PI / 180) < 0);
+    } else {
+      var d = LEVELS[level].dot, half = (d - 1) >> 1;
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.floor(flea.x) - half, Math.floor(flea.y) - half, d, d);
+    }
+
+    if (missMark) {                            // 空振りした場所に、当たり判定の大きさの輪を出す
+      ctx.globalAlpha = 1 - missMark.age / MISS_MARK_MS;
+      ctx.strokeStyle = "#ff0000";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(missMark.x + 0.5, missMark.y + 0.5, Math.max(missMark.r, 2), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function formatTime(ms) {
+    var tenths = Math.floor(ms / 100);
+    var m = Math.floor(tenths / 600), s = Math.floor(tenths / 10) % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s + "." + (tenths % 10);
+  }
+
+  /* ---- 結果の共有 -------------------------------------------------- */
+
+  function pad(n, width) {
+    var s = String(n);
+    while (s.length < width) s = "0" + s;
+    return s;
+  }
+
+  // 投稿用の時間表記 00分00秒000 (末尾 3 桁はミリ秒)
+  function formatTimeMs(ms) {
+    var t = Math.floor(ms);
+    return pad(Math.floor(t / 60000), 2) + "分" + pad(Math.floor(t / 1000) % 60, 2) + "秒" + pad(t % 1000, 3);
+  }
+
+  function buildShareText() {
+    var target = dimeSkin ? "ディメトロドン" : "ノミ";
+    return "わたしは　" + LEVELS[level].name + "　" + target + "を　" + misses + " 回空振りして " +
+           formatTimeMs(elapsed) + " で　潰しました。ぷち。";
+  }
+
+  function buildPostUrl(text) {
+    var url = POST_URL + "?text=" + encodeURIComponent(text);
+    if (SHARE_APPEND_URL && /^https?:$/.test(location.protocol)) {
+      url += "&url=" + encodeURIComponent(location.href);
+    }
+    return url;
+  }
+
+  function resetCopyLabel() {
+    clearTimeout(copyTimer);
+    el("copy-label").textContent = "コピーする";
+  }
+
+  function showCopyResult(ok) {
+    clearTimeout(copyTimer);
+    el("copy-label").textContent = ok ? "コピーしました" : "コピーできませんでした";
+    copyTimer = setTimeout(resetCopyLabel, COPY_NOTICE_MS);
+  }
+
+  // https で開いていないと navigator.clipboard が使えないブラウザ向けの旧式の方法
+  function copyByTextarea(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function copyShareText() {
+    if (state !== "result") return;
+    var text = shareText;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { showCopyResult(true); },
+        function () { showCopyResult(copyByTextarea(text)); }
+      );
+    } else {
+      showCopyResult(copyByTextarea(text));
+    }
+  }
+
+  function openPostForm() {
+    if (state !== "result") return;
+    window.open(el("btn-post").href, "_blank", "noopener,noreferrer");
+  }
+
+  var hudCache = {};
+  function setText(id, text) {
+    if (hudCache[id] !== text) { hudCache[id] = text; el(id).textContent = text; }
+  }
+
+  function updateHud() {
+    setText("hud-time", formatTime(elapsed));
+    setText("hud-miss", String(misses));
+    setText("hud-best", best[level] === undefined ? "--:--.-" : formatTime(best[level]));
+  }
+
+  function frame(now) {
+    var dt = Math.min(now - lastTime, 100);    // タブを離れていた間のぶんは進めない
+    lastTime = now;
+    update(dt);
+    draw();
+    if (state === "play") updateHud();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---- 入力 -------------------------------------------------------- */
+
+  function toLogical(e) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * W / rect.width,
+      y: (e.clientY - rect.top) * H / rect.height
+    };
+  }
+
+  function trackPointer(e) {
+    var p = toLogical(e);
+    pointer.x = p.x;
+    pointer.y = p.y;
+    pointer.inside = p.x >= 0 && p.x < W && p.y >= 0 && p.y < H;
+  }
+
+  function isHit(p) {
+    var r = hitRadius();
+    if (r === 0) {                             // ナイトメア: 同じドットを押さえたときだけ
+      return Math.floor(p.x) === Math.floor(flea.x) && Math.floor(p.y) === Math.floor(flea.y);
+    }
+    var dx = p.x - flea.x, dy = p.y - flea.y;
+    return dx * dx + dy * dy <= r * r;
+  }
+
+  window.addEventListener("pointermove", trackPointer);
+
+  screenEl.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    trackPointer(e);
+    if (state === "title" || state === "result") { start(); return; }
+    if (state !== "play") return;
+    if (e.button === 2) { toTitle(); return; } // 右クリックでやめる
+    var p = toLogical(e);
+    if (isHit(p)) {
+      caught();
+    } else {
+      misses++;
+      missMark = { x: Math.floor(p.x), y: Math.floor(p.y), r: hitRadius(), age: 0 };
+    }
+  });
+
+  screenEl.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // 投稿・コピーのボタンを押しても「次のノミへ」が始まらないようにする
+  el("share").addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+  el("btn-copy").addEventListener("click", copyShareText);
+
+  function setLevel(n) {
+    level = n;
+    var buttons = document.querySelectorAll("[data-level]");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute("aria-pressed", String(Number(buttons[i].getAttribute("data-level")) === n));
+    }
+    if (state === "play") start(); else updateHud();
+  }
+
+  function toggleSkin() {
+    dimeSkin = !dimeSkin;
+    el("btn-skin").setAttribute("aria-pressed", String(dimeSkin));
+  }
+
+  function nextColor() {
+    colorIndex = (colorIndex + 1) % COLORS.length;
+    el("swatch").style.background = COLORS[colorIndex];
+  }
+
+  var levelButtons = document.querySelectorAll("[data-level]");
+  for (var i = 0; i < levelButtons.length; i++) {
+    levelButtons[i].addEventListener("click", function () { setLevel(Number(this.getAttribute("data-level"))); });
+  }
+  el("btn-skin").addEventListener("click", toggleSkin);
+  el("btn-color").addEventListener("click", nextColor);
+  el("btn-quit").addEventListener("click", toTitle);
+
+  window.addEventListener("keydown", function (e) {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key >= "1" && e.key <= "4") setLevel(Number(e.key) - 1);
+    else if (e.key === "5") toggleSkin();
+    else if (e.key === "6") nextColor();
+    else if (e.key === "Escape") toTitle();
+    else if (e.key === "x" || e.key === "X") openPostForm();
+    else if (e.key === "c" || e.key === "C") copyShareText();
+    else if ((e.key === " " || e.key === "Enter") && e.target.tagName !== "BUTTON" && state !== "play" && state !== "squash") {
+      e.preventDefault();
+      start();
+    }
+  });
+
+  el("swatch").style.background = COLORS[colorIndex];
+  toTitle();
+  requestAnimationFrame(function (now) { lastTime = now; requestAnimationFrame(frame); });
+})();
+</script>
+</body>
+</html>
