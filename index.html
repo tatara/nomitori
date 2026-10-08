@@ -58,6 +58,17 @@
   .keys .swatch { display: inline-block; width: 0.8em; height: 0.8em; margin-left: 0.4em; border: 1px solid var(--black); vertical-align: -0.05em; }
 
   .howto { margin: 16px 0 0; max-width: 40em; color: var(--dim); }
+
+  /* ページ下部の商品紹介 (Amazon アソシエイトのリンク)。商品画像・価格・レビューは規約上ここに書けない */
+  .ad { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; max-width: 46em; margin: 32px 0 0; padding: 16px; border: 1px solid var(--dim); }
+  .ad-flea { flex: none; width: 84px; height: 54px; fill: var(--yellow); }
+  .ad-body { flex: 1 1 16em; }
+  .ad p { margin: 0; }
+  .ad .ad-label { color: var(--dim); }
+  .ad .ad-name { color: var(--yellow); }
+  .ad-link { display: inline-flex; align-items: center; min-height: 40px; margin: 12px 0; padding: 4px 10px; background: var(--white); color: var(--black); text-decoration: none; }
+  .ad-link:hover { background: var(--cyan); }
+  .ad-link:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -101,6 +112,24 @@
   </div>
 
   <p class="howto">ノミはカーソルが近づくとふらつき、正面から迫ると向きを変えて逃げます。画面の端から出ると反対側に現れます。「ナイトメア」は 1 ドットのノミを 1 ドットの狂いもなく押さえる必要があります。</p>
+
+  <!--
+    Amazon アソシエイトのリンク。運営規約に合わせて次のようにしている (変更するときは規約を確認すること):
+    ・リンク先は商品ページで、アソシエイト ID (tag=reibahero-22) を含む
+    ・ボタンの文言で、Amazon へのリンクだとわかるようにする
+    ・rel に noreferrer を付けない (リンク元のサイトを Amazon から隠さないため)
+    ・「Amazonのアソシエイトとして…」の一文を必ず表示する
+  -->
+  <aside class="ad" aria-label="広告">
+    <svg class="ad-flea" viewBox="0 0 14 9" aria-hidden="true" shape-rendering="crispEdges"><rect x="5" y="0" width="4" height="1"/><rect x="3" y="1" width="8" height="1"/><rect x="2" y="2" width="10" height="1"/><rect x="13" y="2" width="1" height="1"/><rect x="1" y="3" width="12" height="1"/><rect x="1" y="4" width="11" height="1"/><rect x="2" y="5" width="9" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="7" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="1" y="7" width="1" height="1"/><rect x="4" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="11" y="7" width="1" height="1"/><rect x="0" y="8" width="1" height="1"/><rect x="3" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/></svg>
+    <div class="ad-body">
+      <p class="ad-label">広告</p>
+      <p class="ad-name">アース・ペット 電子ノミとりホイホイ</p>
+      <p>ゲームではなく、本物のノミにお困りの方へ。</p>
+      <a class="ad-link" href="https://www.amazon.co.jp/dp/B000FQVKZS?th=1&amp;linkCode=ll2&amp;tag=reibahero-22&amp;linkId=f355c81d49e3e960b6cc621eb36ce043&amp;ref_=as_li_ss_tl" target="_blank" rel="noopener sponsored">Amazonで商品を見る</a>
+      <p>Amazonのアソシエイトとして、ノミ取りドンは適格販売により収入を得ています。</p>
+    </div>
+  </aside>
 </main>
 
 <script>
@@ -484,7 +513,7 @@
     else if (e.key === "Escape") toTitle();
     else if (e.key === "x" || e.key === "X") openPostForm();
     else if (e.key === "c" || e.key === "C") copyShareText();
-    else if ((e.key === " " || e.key === "Enter") && e.target.tagName !== "BUTTON" && state !== "play" && state !== "squash") {
+    else if ((e.key === " " || e.key === "Enter") && e.target.tagName !== "BUTTON" && e.target.tagName !== "A" && state !== "play" && state !== "squash") {
       e.preventDefault();
       start();
     }
